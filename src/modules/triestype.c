@@ -56,10 +56,8 @@
 static RedisModuleType *TriesType;
 
 /* ========================== Internal data structure  =======================
- * This is just a linked list of 64 bit integers where elements are inserted
- * in-place, so it's ordered. There is no pop/push operation but just insert
- * because it is enough to show the implementation of new data types without
- * making things complex. */
+ * Implements a trie, with a 26 letter alphabet.
+ */
 
 struct TriesTypeNode {
     struct TriesTypeNode *children[ALPHABET_SIZE];
@@ -72,7 +70,7 @@ struct TriesTypeObject {
     size_t len; /* Number of letters (?) added. */
 };
 
-/* Create single trie node */
+/* createTriesTypeNode: create single trie node, uses redis allocator */
 struct TriesTypeNode *createTriesTypeNode(void)
 {
     struct TriesTypeNode *node;
@@ -87,7 +85,7 @@ struct TriesTypeNode *createTriesTypeNode(void)
     return node;
 }
 
-/* Create triestype object */
+/* createTriesTypeObject: Create triestype object, with single root node */
 struct TriesTypeObject *createTriesTypeObject(void) {
     struct TriesTypeObject *o;
     struct TriesTypeNode *node;
@@ -98,8 +96,8 @@ struct TriesTypeObject *createTriesTypeObject(void) {
     return o;
 }
 
-// If not present, inserts key into trie
-// If the key is prefix of trie node, just marks leaf node
+/* TriesTypeInsert:  If not present, inserts string key into trie
+ *  If the key is prefix of trie node, just marks leaf node */
 void TriesTypeInsert(struct TriesTypeObject *o, const char *key, size_t length) {
     unsigned int level;
     unsigned int index;
@@ -124,7 +122,7 @@ void TriesTypeInsert(struct TriesTypeObject *o, const char *key, size_t length) 
     pCrawl->isEndOfWord = true;
 }
 
-// Returns true if key presents in trie, else false
+/* TriesTypeSearch:  Returns true if key presents in trie, else false */
 bool TriesTypeSearch(struct TriesTypeObject *o, const char *key, size_t length)
 {
     unsigned int level;
@@ -191,7 +189,7 @@ int TriesTypeInsert_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, 
 }
 
 /* TRIESTYPE.SEARCH key value */
-/* Prints out 1 if true, 0 if false */
+/* Prints out YES if true, NO if false */
 int TriesTypeSearch_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RedisModule_AutoMemory(ctx); /* Use automatic memory management. */
 
