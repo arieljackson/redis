@@ -209,7 +209,7 @@ void suggestionsRec(struct TriesTypeNode* root, const char *currPrefix, struct l
                 char str[2] = "\0";
                 str[0] = (char) (97+i);
                 strcat(new_prefix, str);
-                printf("new_prefix: %s\n", new_prefix);
+                // printf("new_prefix: %s\n", new_prefix);
             } else {
                 // fprintf(STDERR,"malloc failed!\n");
                 return;
