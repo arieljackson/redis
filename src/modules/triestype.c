@@ -70,6 +70,33 @@ struct TriesTypeObject {
     size_t len; /* Number of letters (?) added. */
 };
 
+
+struct listNode {
+   char *word;
+   struct listNode *next;
+};
+
+struct listHead {
+    struct listNode *head;
+};
+
+//insert link at the first location
+void listInsert(struct listHead *head, char *word) {
+    if (!head->head) {
+        struct listNode *link = (struct listNode*) RedisModule_Alloc(sizeof(struct listNode));
+        link->word = word;
+        link->next = NULL;
+        head->head = link;
+        return;
+    }
+   //create a link
+   struct listNode *link = (struct listNode*) RedisModule_Alloc(sizeof(struct listNode));
+   link->word = word;
+   link->next = head->head;
+   head->head = link;
+   return;
+}
+
 /* createTriesTypeNode: create single trie node, uses redis allocator */
 struct TriesTypeNode *createTriesTypeNode(void)
 {
@@ -142,13 +169,139 @@ bool TriesTypeSearch(struct TriesTypeObject *o, const char *key, size_t length)
     return (pCrawl != NULL && pCrawl->isEndOfWord);
 }
 
-/* TODO: this function doesn't work */
-void TriesTypeReleaseObject(struct TriesTypeObject *o) {
-    struct TriesTypeNode *cur;
-    cur = o->root;
-    //TODO: recursive free the tree!
-    RedisModule_Free(cur);
-    RedisModule_Free(o);
+
+// Returns 0 if current node has a child
+// If all children are NULL, return 1.
+bool isLastNode(struct TriesTypeNode* root)
+{
+    for (int i = 0; i < ALPHABET_SIZE; i++)
+        if (root->children[i])
+            return 0;
+    return 1;
+}
+
+// Recursive function to print auto-suggestions for given
+// node.
+void suggestionsRec(struct TriesTypeNode* root, const char *currPrefix, struct listHead *head)
+{
+
+    // found a string in Trie with the given prefix
+    if (root->isEndOfWord)
+    {
+        listInsert(head, (char *) currPrefix);
+        printf("%s\n", head->head->word);
+        // printf("%s\n", currPrefix);
+    }
+ 
+    // All children struct node pointers are NULL
+    if (isLastNode(root))
+        return;
+ 
+    for (int i = 0; i < ALPHABET_SIZE; i++)
+    {
+        if (root->children[i])
+        {
+            // append current character to currPrefix string
+            char *new_prefix ;
+            if((new_prefix = RedisModule_Alloc(strlen(currPrefix)+2)) != NULL){
+                // memset(new_prefix, 0);   // ensures the memory is an empty string
+                strcat(new_prefix,currPrefix);
+                char str[2] = "\0";
+                str[0] = (char) (97+i);
+                strcat(new_prefix, str);
+                printf("new_prefix: %s\n", new_prefix);
+            } else {
+                // fprintf(STDERR,"malloc failed!\n");
+                return;
+            }
+
+            // recur over the rest
+            suggestionsRec(root->children[i], new_prefix, head);
+        }
+    }
+}
+
+/* TriesTypeSuffix: Given a prefix, returns a list of corresponding words in the trie
+ *  TODO If the prefix is "*", returns all the words in the trie */
+struct listHead *TriesTypeSuffix(struct TriesTypeObject *o, const char *key, size_t length) {
+    unsigned int level;
+    unsigned int index;
+ 
+    struct TriesTypeNode *pCrawl = o->root;
+ 
+    for (level = 0; level < length; level++)
+    {
+        index = CHAR_TO_INDEX(key[level]);
+        if (!pCrawl->children[index]) {
+           return NULL;
+        }
+        pCrawl = pCrawl->children[index];
+    }
+ 
+    // If prefix is present as a word.
+    bool isWord = (pCrawl->isEndOfWord == true);
+ 
+    // If prefix is last node of tree (has no
+    // children)
+    bool isLast = isLastNode(pCrawl);
+ 
+    // If prefix is present as a word, but
+    // there is no subtree below the last
+    // matching node.
+    if (isWord && isLast)
+    {
+        struct listHead *head = malloc(sizeof(struct listNode));
+        head->head = NULL;
+        listInsert(head, (char *)key);
+        return head;
+    }
+ 
+    // If there are are nodes below last
+    // matching character.
+    if (!isLast)
+    {
+        const char *prefix = key;
+        struct listHead *head = malloc(sizeof(struct listNode));
+        head->head = NULL;
+        suggestionsRec(pCrawl, prefix, head);
+        // if (head->head) {
+        //     struct listNode *tmp = head->head;
+        //     while (tmp) {
+        //         printf("%s\n", tmp->word);
+        //         tmp = tmp->next;
+        //     }
+        // }
+        return head;
+    }
+    return NULL;
+
+}
+
+
+void TriesTypeReleaseNode(struct TriesTypeNode *node)
+{
+    int i;
+    if (!node) {
+        return;   // safe guard including root node. 
+    }
+    // recursive case (go to end of trie)
+    for (i = 0; i < ALPHABET_SIZE; i++) {
+        if (node->children[i]) {
+            TriesTypeReleaseNode(node->children[i]);
+        }
+    }
+    // base case
+    RedisModule_Free(node);
+}
+
+void TriesTypeReleaseObject(struct TriesTypeObject *o) 
+{
+    if (o) {
+        if (o->root) {
+            TriesTypeReleaseNode(o->root);
+        }
+        RedisModule_Free(o);
+    }
 }
 
 /* ========================= "triestype" type commands ======================= */
@@ -216,7 +369,7 @@ int TriesTypeSearch_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, 
         hto = RedisModule_ModuleTypeGetValue(key);
     }
 
-    /* Insert the new element. */
+    /* Search for element */
     bool check = TriesTypeSearch(hto,value, len);
     if (check) {
         RedisModule_ReplyWithSimpleString(ctx, "YES");
@@ -246,6 +399,51 @@ int TriesTypeLen_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int
     RedisModule_ReplyWithLongLong(ctx,hto ? hto->len : 0);
     return REDISMODULE_OK;
 }
+
+/* TRIESTYPE.SEARCH key suffix count */
+int TriesTypeSuffix_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    RedisModule_AutoMemory(ctx); /* Use automatic memory management. */
+
+    if (argc != 4) return RedisModule_WrongArity(ctx);
+    RedisModuleKey *key = RedisModule_OpenKey(ctx,argv[1],
+        REDISMODULE_READ|REDISMODULE_WRITE);
+    int type = RedisModule_KeyType(key);
+    if (type != REDISMODULE_KEYTYPE_EMPTY &&
+        RedisModule_ModuleTypeGetType(key) != TriesType)
+    {
+        return RedisModule_ReplyWithError(ctx,REDISMODULE_ERRORMSG_WRONGTYPE);
+    }
+
+    const char *value ;
+    size_t len;
+    value = RedisModule_StringPtrLen(argv[2], &len);
+
+    long long count;
+    if ( RedisModule_StringToLongLong(argv[3],&count) != REDISMODULE_OK ||
+        count < 0)
+    {
+        return RedisModule_ReplyWithError(ctx,
+            "ERR invalid first or count parameters");
+    }
+
+    struct TriesTypeObject *tto = RedisModule_ModuleTypeGetValue(key);
+    // struct TriesTypeNode *node = tto ? tto->root : NULL;
+
+
+
+    RedisModule_ReplyWithArray(ctx,REDISMODULE_POSTPONED_ARRAY_LEN);
+    long long arraylen = 0;
+    struct listHead *list = TriesTypeSuffix(tto,value,len);
+    struct listNode *head = list->head;
+    while(head && count--) {
+        RedisModule_ReplyWithSimpleString(ctx, head->word);
+        arraylen++;
+        head = head->next;
+    }
+    RedisModule_ReplySetArrayLength(ctx,arraylen);
+    return REDISMODULE_OK;
+}
+
 
 
 /* ========================== "triestype" type methods ======================= */
@@ -337,6 +535,10 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
 
     if (RedisModule_CreateCommand(ctx,"triestype.len",
         TriesTypeLen_RedisCommand,"readonly",1,1,1) == REDISMODULE_ERR)
+        return REDISMODULE_ERR;
+
+    if (RedisModule_CreateCommand(ctx,"triestype.suffix",
+        TriesTypeSuffix_RedisCommand,"readonly",1,1,1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
     return REDISMODULE_OK;
