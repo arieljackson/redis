@@ -400,11 +400,11 @@ int TriesTypeLen_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int
     return REDISMODULE_OK;
 }
 
-/* TRIESTYPE.SEARCH key suffix count */
+/* TRIESTYPE.SEARCH key suffix */
 int TriesTypeSuffix_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RedisModule_AutoMemory(ctx); /* Use automatic memory management. */
 
-    if (argc != 4) return RedisModule_WrongArity(ctx);
+    if (argc != 3) return RedisModule_WrongArity(ctx);
     RedisModuleKey *key = RedisModule_OpenKey(ctx,argv[1],
         REDISMODULE_READ|REDISMODULE_WRITE);
     int type = RedisModule_KeyType(key);
@@ -418,13 +418,13 @@ int TriesTypeSuffix_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, 
     size_t len;
     value = RedisModule_StringPtrLen(argv[2], &len);
 
-    long long count;
-    if ( RedisModule_StringToLongLong(argv[3],&count) != REDISMODULE_OK ||
-        count < 0)
-    {
-        return RedisModule_ReplyWithError(ctx,
-            "ERR invalid first or count parameters");
-    }
+    // long long count;
+    // if ( RedisModule_StringToLongLong(argv[3],&count) != REDISMODULE_OK ||
+    //     count < 0)
+    // {
+    //     return RedisModule_ReplyWithError(ctx,
+    //         "ERR invalid first or count parameters");
+    // }
 
     struct TriesTypeObject *tto = RedisModule_ModuleTypeGetValue(key);
     // struct TriesTypeNode *node = tto ? tto->root : NULL;
@@ -434,8 +434,8 @@ int TriesTypeSuffix_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, 
     RedisModule_ReplyWithArray(ctx,REDISMODULE_POSTPONED_ARRAY_LEN);
     long long arraylen = 0;
     struct listHead *list = TriesTypeSuffix(tto,value,len);
-    struct listNode *head = list->head;
-    while(head && count--) {
+    struct listNode *head = list? list->head : NULL;
+    while(head) {
         RedisModule_ReplyWithSimpleString(ctx, head->word);
         arraylen++;
         head = head->next;
