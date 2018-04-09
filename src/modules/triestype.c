@@ -43,8 +43,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/* COPY AND PASTED FROM INTERNET */
-/* TODO: paste in which website u got it from */
+/* from https://www.geeksforgeeks.org/trie-insert-and-search/ */
 
 #define ARRAY_SIZE(a) sizeof(a)/sizeof(a[0])
 // Alphabet size (# of symbols)
@@ -59,18 +58,7 @@ static RedisModuleType *TriesType;
  * Implements a trie, with a 26 letter alphabet.
  */
 
-struct TriesTypeNode {
-    struct TriesTypeNode *children[ALPHABET_SIZE];
-    bool isEndOfWord;
-};
-
-/* can change this struct if helpful later on */
-struct TriesTypeObject {
-    struct TriesTypeNode *root;
-    size_t len; /* Number of letters (?) added. */
-};
-
-
+/* Linkedlist structs */
 struct listNode {
    char *word;
    struct listNode *next;
@@ -80,7 +68,20 @@ struct listHead {
     struct listNode *head;
 };
 
-//insert link at the first location
+/* Trie structs */
+struct TriesTypeNode {
+    struct TriesTypeNode *children[ALPHABET_SIZE];
+    bool isEndOfWord;
+};
+
+struct TriesTypeObject {
+    struct TriesTypeNode *root;
+    size_t len; /* Number of words added. */
+};
+
+
+/* Linkedlist functions */
+/* listInsert: insert at the first location in list */
 void listInsert(struct listHead *head, char *word) {
     if (!head->head) {
         struct listNode *link = (struct listNode*) RedisModule_Alloc(sizeof(struct listNode));
@@ -170,8 +171,10 @@ bool TriesTypeSearch(struct TriesTypeObject *o, const char *key, size_t length)
 }
 
 
-// Returns 0 if current node has a child
-// If all children are NULL, return 1.
+/* isLastNode: checks if the current node has any children
+ * Returns 0 if current node has a child
+ * If all children are NULL, return 1.
+ */
 bool isLastNode(struct TriesTypeNode* root)
 {
     for (int i = 0; i < ALPHABET_SIZE; i++)
@@ -294,6 +297,7 @@ void TriesTypeReleaseNode(struct TriesTypeNode *node)
     RedisModule_Free(node);
 }
 
+/*  TriesTypeReleaseObject: frees the tries type object */
 void TriesTypeReleaseObject(struct TriesTypeObject *o) 
 {
     if (o) {
@@ -448,7 +452,7 @@ int TriesTypeSuffix_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, 
 
 /* ========================== "triestype" type methods ======================= */
 
-/* ALL OF THIS IS WRONG */
+/* ALL OF THIS IS BROKEN */
 // void *TriesTypeRdbLoad(RedisModuleIO *rdb, int encver) {
 //     if (encver != 0) {
 //         /* RedisModule_Log("warning","Can't load data with version %d", encver);*/
@@ -473,7 +477,7 @@ int TriesTypeSuffix_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, 
 //     }
 // }
 
-// bullshit bullshit bullshit
+/* THIS FUNCTION IS BROKEN AND DOES NOT SAVE CORRECTLY */
 void TriesTypeAofRewrite(RedisModuleIO *aof, RedisModuleString *key, void *value) {
     struct TriesTypeObject *hto = value;
     struct TriesTypeNode *node = hto->root;
@@ -483,28 +487,31 @@ void TriesTypeAofRewrite(RedisModuleIO *aof, RedisModuleString *key, void *value
 }
 
 /* The goal of this function is to return the amount of memory used by
- * the TriesType value. */
+ * the TriesType value.  BROKEN */
 size_t TriesTypeMemUsage(const void *value) {
     const struct TriesTypeObject *hto = value;
     struct TriesTypeNode *node = hto->root;
     return sizeof(*hto) + sizeof(*node)*hto->len;
 }
 
+/* NOT BROKEN */
 void TriesTypeFree(void *value) {
     TriesTypeReleaseObject(value);
 }
 
+/* BROKEN */
 void TriesTypeDigest(RedisModuleDigest *md, void *value) {
     struct TriesTypeObject *hto = value;
-    // this is complete bullshit, im literally adding length
-    // as the size  of memory
-    // just doing this to get the compiler to shut up
+    // Broken - literally adding length
+    // to get the compiler to shut up
     RedisModule_DigestAddLongLong(md,hto->len);
     RedisModule_DigestEndSequence(md);
 }
 
 /* This function must be present on each Redis module. It is used in order to
- * register the commands into the Redis server. */
+ * register the commands into the Redis server.
+ * NOT BROKEN. Most important function
+ */
 int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     REDISMODULE_NOT_USED(argv);
     REDISMODULE_NOT_USED(argc);
